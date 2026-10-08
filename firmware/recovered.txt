@@ -1,0 +1,139 @@
+Created At: 2026-10-05T15:17:03+03:00
+Completed At: 2026-10-05T15:17:03+03:00
+File Path: `file:///c:/Users/Yafarov_DS/Desktop/test_project/firmware/pn2026_esp32/pn2026_esp32.ino`
+Total Lines: 130
+Total Bytes: 4770
+Showing lines 1 to 130
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: #include <SPI.h>
+2: #include <Wire.h>
+3: #include <Adafruit_GFX.h>
+4: #include <Adafruit_ILI9341.h>
+5: #include <Adafruit_ADS1X15.h>
+6: 
+7: // Конфигурация пинов дисплея ILI9341
+8: #define TFT_CS   17   // TX2 (GPIO 17)
+9: #define TFT_DC   15   // D15
+10: #define TFT_MOSI 22   // SDI / MOSI (D22)
+11: #define TFT_SCK  5    // SCK (D5)
+12: #define TFT_RST  2    // RST (D2)
+13: 
+14: Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCK, TFT_RST);
+15: Adafruit_ADS1115 ads;
+16: 
+17: const float SHUNT_RESISTANCE = 100.0; // Резистор 100 Ом
+18: 
+19: // Настройки фильтра скользящего среднего
+20: const int NUM_READINGS = 15;
+21: 
+22: // Данные для фильтрации канала A0
+23: float readingsA0[NUM_READINGS];
+24: float totalA0 = 0;
+25: int indexA0 = 0;
+26: 
+27: // Данные для фильтрации канала A1
+28: float readingsA1[NUM_READINGS];
+29: float totalA1 = 0;
+30: int indexA1 = 0;
+31: 
+32: // Данные для фильтрации канала A2
+33: float readingsA2[NUM_READINGS];
+34: float totalA2 = 0;
+35: int indexA2 = 0;
+36: 
+37: void setup() {
+38:   Serial.begin(115200);
+39:   delay(1000);
+40:   
+41:   Serial.println("\n--- Старт измерителя PN-2026 ---");
+42: 
+43:   // Инициализация I2C для ADS1115 (SDA: D19, SCL: D21)
+44:   Wire.begin(19, 21);
+45:   if (!ads.begin(0x48, &Wire)) {
+46:     Serial.println("Ошибка: чип ADS1115 не найден!");
+47:   }
+48:   ads.setGain(GAIN_FOUR);
+49:   ads.setDataRate(RATE_ADS1115_8SPS); // Максимальная фильтрация помех на аппаратном уровне
+50: 
+51:   // Зануление массивов фильтров
+52:   for (int i = 0; i < NUM_READINGS; i++) {
+53:     readingsA0[i] = 0;
+54:     readingsA1[i] = 0;
+55:     readingsA2[i] = 0;
+56:   }
+57: 
+58:   // Инициализация дисплея
+59:   tft.begin();
+60:   tft.setRotation(1);
+61:   tft.fillScreen(ILI9341_BLACK);
+62: 
+63:   // Отрисовка статичного интерфейса
+64:   drawStaticUI();
+65: }
+66: 
+67: void loop() {
+68:   // 1. Чтение «сырых» значений напряжения с каждого канала и перевод в миллиамперы
+69:   float raw0_mA = (ads.computeVolts(ads.readADC_SingleEnded(0)) / SHUNT_RESISTANCE) * 1000.0;
+70:   float raw1_mA = (ads.computeVolts(ads.readADC_SingleEnded(1)) / SHUNT_RESISTANCE) * 1000.0;
+71:   float raw2_mA = (ads.computeVolts(ads.readADC_SingleEnded(2)) / SHUNT_RESISTANCE) * 1000.0;
+72: 
+73:   // 2. Применение функции фильтрации к каждому каналу
+74:   float filtered0 = applyFilter(raw0_mA, readingsA0, &totalA0, &indexA0);
+75:   float filtered1 = applyFilter(raw1_mA, readingsA1, &totalA1, &indexA1);
+76:   float filtered2 = applyFilter(raw2_mA, readingsA2, &totalA2, &indexA2);
+77: 
+78:   // 3. Обновление значений на дисплее без мерцания
+79:   updateDisplayValues(filtered0, filtered1, filtered2);
+80: 
+81:   // 4. Отладка в Serial-порте
+82:   Serial.print("A0: "); Serial.print(filtered0, 2);
+83:   Serial.print(" mA | A1: "); Serial.print(filtered1, 2);
+84:   Serial.print(" mA | A2: "); Serial.print(filtered2, 2);
+85:   Serial.println(" mA");
+86: 
+87:   delay(200); // Интервал обновления
+88: }
+89: 
+90: // Функция отрисовки статичных элементов интерфейса
+91: void drawStaticUI() {
+92:   tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+93:   tft.setTextSize(2);
+94:   
+95:   tft.setCursor(10, 10);
+96:   tft.print("PN-2026: CURRENT MONITOR");
+97: 
+98:   tft.setCursor(10, 50);
+99:   tft.print("A0: ");
+100:   tft.setCursor(10, 80);
+101:   tft.print("A1: ");
+102:   tft.setCursor(10, 110);
+103:   tft.print("A2: ");
+104: }
+105: 
+106: // Универсальная функция расчета скользящего среднего
+107: float applyFilter(float newVal, float readings[], float *total, int *idx) {
+108:   *total = *total - readings[*idx];       // Удаляем старое значение из суммы
+109:   readings[*idx] = newVal;                // Записываем новое значение
+110:   *total = *total + readings[*idx];       // Добавляем новое значение в сумму
+111:   *idx = (*idx + 1) % NUM_READINGS;       // Сдвигаем индекс по кругу
+112:   
+113:   return *total / NUM_READINGS;           // Возвращаем среднее арифметическое
+114: }
+115: 
+116: // Функция обновления цифр на экране с затиркой хвостов
+117: void updateDisplayValues(float c0, float c1, float c2) {
+118:   tft.setTextSize(2);
+119:   tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+120: 
+121:   tft.setCursor(60, 50);
+122:   tft.print(c0, 2); tft.print(" mA   ");
+123: 
+124:   tft.setCursor(60, 80);
+125:   tft.print(c1, 2); tft.print(" mA   ");
+126: 
+127:   tft.setCursor(60, 110);
+128:   tft.print(c2, 2); tft.print(" mA   ");
+129: }
+130: 
+The above content shows the entire, complete file contents of the requested file.
+

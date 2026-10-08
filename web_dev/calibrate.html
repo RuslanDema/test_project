@@ -1,0 +1,65 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Калибровка ПН-2026</title>
+  <style>
+    body { background: #090d16; color: #f8fafc; font-family: sans-serif; padding: 20px; }
+    .card { background: #131a27; border: 1px solid #24334a; border-radius: 10px; padding: 15px; margin-bottom: 15px; }
+    h2 { margin-top: 0; color: #00e5ff; }
+    .channel { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #24334a; padding-bottom: 10px; }
+    input { width: 80px; padding: 5px; background: #090d16; color: white; border: 1px solid #24334a; border-radius: 5px; }
+    button { background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
+    button:hover { background: #059669; }
+    .val { font-size: 20px; font-weight: bold; color: #ffb300; }
+    .error { color: #ef4444; font-weight: bold; margin-bottom: 15px; display: none; }
+  </style>
+</head>
+<body>
+  <h2>ПН-2026 | Калибровка</h2>
+  <div id="adcError" class="error">ОШИБКА: АЦП (ADS1115) не найден!</div>
+  <div class="card"><h3>Канал 1</h3>
+    <div class="channel"><div>Сырое: <span id="raw1" class="val">0.0</span></div> <div>Итог: <span id="cal1" class="val">0.0</span></div></div>
+    <div>Множ: <input type="number" step="0.001" id="m1"> Сдвиг: <input type="number" step="0.01" id="o1"></div>
+  </div>
+  <div class="card"><h3>Канал 2</h3>
+    <div class="channel"><div>Сырое: <span id="raw2" class="val">0.0</span></div> <div>Итог: <span id="cal2" class="val">0.0</span></div></div>
+    <div>Множ: <input type="number" step="0.001" id="m2"> Сдвиг: <input type="number" step="0.01" id="o2"></div>
+  </div>
+  <div class="card"><h3>Канал 3</h3>
+    <div class="channel"><div>Сырое: <span id="raw3" class="val">0.0</span></div> <div>Итог: <span id="cal3" class="val">0.0</span></div></div>
+    <div>Множ: <input type="number" step="0.001" id="m3"> Сдвиг: <input type="number" step="0.01" id="o3"></div>
+  </div>
+  <button onclick="saveCalib()">СОХРАНИТЬ В ПАМЯТЬ</button>
+  <button style="background:#24334a; margin-top:10px" onclick="location.href='/'">НАЗАД НА ГЛАВНУЮ</button>
+
+  <script>
+    let isEditing = false;
+    document.querySelectorAll('input').forEach(el => { el.addEventListener('focus', () => isEditing = true); el.addEventListener('blur', () => isEditing = false); });
+    setInterval(() => {
+      fetch('/api/data').then(r => r.json()).then(d => {
+        if (d.adc_error) document.getElementById('adcError').style.display = 'block';
+        document.getElementById('raw1').innerText = d.r1.toFixed(2); document.getElementById('cal1').innerText = d.c1.toFixed(2);
+        document.getElementById('raw2').innerText = d.r2.toFixed(2); document.getElementById('cal2').innerText = d.c2.toFixed(2);
+        document.getElementById('raw3').innerText = d.r3.toFixed(2); document.getElementById('cal3').innerText = d.c3.toFixed(2);
+        if(!isEditing) {
+          document.getElementById('m1').value = d.m1; document.getElementById('o1').value = d.o1;
+          document.getElementById('m2').value = d.m2; document.getElementById('o2').value = d.o2;
+          document.getElementById('m3').value = d.m3; document.getElementById('o3').value = d.o3;
+        }
+      }).catch(e => console.log(e));
+    }, 500);
+
+    function saveCalib() {
+      const data = {
+        m1: parseFloat(document.getElementById('m1').value)||1, o1: parseFloat(document.getElementById('o1').value)||0,
+        m2: parseFloat(document.getElementById('m2').value)||1, o2: parseFloat(document.getElementById('o2').value)||0,
+        m3: parseFloat(document.getElementById('m3').value)||1, o3: parseFloat(document.getElementById('o3').value)||0
+      };
+      fetch('/api/calibrate', { method: 'POST', body: JSON.stringify(data) }).then(() => alert('Сохранено!'));
+    }
+  </script>
+</body>
+</html>
